@@ -12,7 +12,7 @@ from web3 import Web3
 from web3.middleware import geth_poa_middleware
 from hexbytes import HexBytes
 import re
-from eth_account.messages import defunct_hash_message
+from eth_account.messages import encode_defunct
 
 env = environ.Env()
 
@@ -22,9 +22,15 @@ env = environ.Env()
 @method
 def pm_sponsorUserOperation(request, token_address) -> Result:
     w3 = Web3(Web3.HTTPProvider(env('HTTPProvider')))
+    
     chainId = str(env('chainId'))
     if chainId == "80002":
         w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    
+    # Verify connection
+    if w3.is_connected():
+        print('\033[96m' +"Connected to the network!" + '\033[39m')
+    
     print('\033[96m' + "Paymaster Operation received." + '\033[39m')
     token_object = ERC20ApprovedToken.objects.filter(chains__has_key=chainId).filter(chains__icontains=token_address)
     if len(token_object) < 1:
@@ -40,43 +46,49 @@ def pm_sponsorUserOperation(request, token_address) -> Result:
         return Error(400, "BAD REQUEST")
 
     print('\033[96m' + "Serializs is done." + '\033[39m')
-    op = dict(serialzer.data)
-    op["maxFeePerGas"] = int(op["maxFeePerGas"], 16)
-    op["maxPriorityFeePerGas"] = int(op["maxPriorityFeePerGas"], 16)
-    op["callGasLimit"] = int(op["callGasLimit"], 16)
-    op["verificationGasLimit"] = int(op["verificationGasLimit"], 16)
-    op["preVerificationGas"] = int(op["preVerificationGas"], 16)
-    op["nonce"] = int(op["nonce"], 16)
-    
+    op = (
+        serialzer.data["sender"],
+        int(serialzer.data["nonce"], 16),
+        HexBytes(serialzer.data["initCode"]),
+        HexBytes(serialzer.data["callData"]),
+        int(serialzer.data["callGasLimit"], 16),
+        int(serialzer.data["verificationGasLimit"], 16),
+        int(serialzer.data["preVerificationGas"], 16),
+        int(serialzer.data["maxFeePerGas"], 16),
+        int(serialzer.data["maxPriorityFeePerGas"], 16),
+        HexBytes(serialzer.data["paymasterAndData"]),
+        HexBytes(serialzer.data["signature"]),
+    )
+
     additional_gas = 35000
     exchange_rate = _get_token_rate(token)
     print('\033[96m' + "Exchange rate received." + '\033[39m')
 
-    total_gas = op["preVerificationGas"] + op["verificationGasLimit"] + op["callGasLimit"]
-    actual_token_cost = ((total_gas * op["maxFeePerGas"] + (additional_gas * op["maxFeePerGas"])) * exchange_rate) // 10**18
-    print ("actual token cost : ",actual_token_cost)
+    # Accessing tuple elements by index
+    sender = op[0]
+    callGasLimit = op[4]
+    verificationGasLimit = op[5]
+    preVerificationGas = op[6]
+    maxFeePerGas = op[7]
+
+    # Calculate total gas
+    total_gas = preVerificationGas + verificationGasLimit + callGasLimit
+
+    # Calculate actual token cost
+    actual_token_cost = ((total_gas * maxFeePerGas + (additional_gas * maxFeePerGas)) * exchange_rate) // 10**18
+    print("actual token cost : ", actual_token_cost)
     
     ERC20_ABI = [{"inputs": [{"name": "_owner","type": "address"}],"name": "balanceOf","outputs": [{"name": "balance","type": "uint256"}],"stateMutability": "view","type": "function"},]
   
-    # Retrieve wallet address from the operation
-    wallet_address = op["sender"]
-    print("sender : ",op["sender"])
     # Check the wallet balance for the required token
     erc20_contract = w3.eth.contract(address=token_address, abi=ERC20_ABI)
-    wallet_balance = erc20_contract.functions.balanceOf(wallet_address).call()
+    wallet_balance = erc20_contract.functions.balanceOf(sender).call()
     if wallet_balance < actual_token_cost:
-        error_message = (
-            f"Insufficient token"
-        )
-        print('\033[91m' + error_message + '\033[39m')  # Prints the error in red for visibility
-        return Error(3, error_message, data="")
-    
+        print('\033[91m' + "Insufficient token" + '\033[39m')
+        return Error(3, "Insufficient token", data="")
+
     abi = [{"inputs":[{"components":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"nonce","type":"uint256"},{"internalType":"bytes","name":"initCode","type":"bytes"},{"internalType":"bytes","name":"callData","type":"bytes"},{"internalType":"uint256","name":"callGasLimit","type":"uint256"},{"internalType":"uint256","name":"verificationGasLimit","type":"uint256"},{"internalType":"uint256","name":"preVerificationGas","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"uint256","name":"maxPriorityFeePerGas","type":"uint256"},{"internalType":"bytes","name":"paymasterAndData","type":"bytes"},{"internalType":"bytes","name":"signature","type":"bytes"}],"internalType":"struct UserOperation","name":"userOp","type":"tuple"},{"components":[{"internalType":"contract IERC20Metadata","name":"token","type":"address"},{"internalType":"enum CandidePaymaster.SponsoringMode","name":"mode","type":"uint8"},{"internalType":"uint48","name":"validUntil","type":"uint48"},{"internalType":"uint256","name":"fee","type":"uint256"},{"internalType":"uint256","name":"exchangeRate","type":"uint256"},{"internalType":"bytes","name":"signature","type":"bytes"}],"internalType":"struct CandidePaymaster.PaymasterData","name":"paymasterData","type":"tuple"}],"name":"getHash","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]
-
     paymaster = w3.eth.contract(address=env('paymaster_add'), abi=abi)
-
-    print(w3.eth.get_block("latest").timestamp)
-    print((w3.eth.get_block("latest").number))
 
     paymasterData = [
         token["address"],
@@ -86,18 +98,13 @@ def pm_sponsorUserOperation(request, token_address) -> Result:
         exchange_rate,  # Exchange Rate
         b'',
     ]
-  
-    print(type(op))         # Should be tuple
-    print(type(paymasterData))  # Should be tuple
-    print('\033[96m' + "PaymasterData calculated" + '\033[39m')
+
     hash = paymaster.functions.getHash(op, paymasterData).call()
-    hash = defunct_hash_message(hash)
+    hash = encode_defunct(hash)
     paymasterSigner = w3.eth.account.from_key(env('paymaster_pk'))
-    sig = paymasterSigner.signHash(hash)
-    print('sign',sig)
-    print('sig',sig.signature.hex())
+    sig = paymasterSigner.sign_message(hash)
     paymasterData[-1] = HexBytes(sig.signature.hex())
-    print('paymasterData last fiels', paymasterData[-1])
+
     print('\033[96m' + "Paymaster signature signed." + '\033[39m')
     paymasterAndData = (
           str(paymasterData[0][2:])
@@ -105,7 +112,7 @@ def pm_sponsorUserOperation(request, token_address) -> Result:
         + str("{0:0{1}x}".format(paymasterData[2], 12))
         + str("{0:0{1}x}".format(paymasterData[3], 64))
         + str("{0:0{1}x}".format(paymasterData[4], 64))
-        + sig.signature.hex()[2:]
+        + sig.signature.hex()
     )
 
     return Success(paymasterAndData)
@@ -137,7 +144,6 @@ def pm_supportedEntryPoints() -> Result:
 
 def _get_token_rate(token):
     rate_request = requests.get(token["exchangeRateSource"])
-    print("rate_request: ",float(re.search(r'"eth":([\d.eE-]+)', rate_request.content.decode()).group(1)))
     rate_float = 1 / float(re.search(r'"eth":([\d.eE-]+)', rate_request.content.decode()).group(1))
     rate = math.ceil(rate_float * (10 ** token["decimals"]))
     return rate

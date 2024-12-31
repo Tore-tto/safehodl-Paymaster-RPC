@@ -23,6 +23,18 @@ This repo includes the paymaster RPC service.
 
 # How to use this repo
 
+### Setup env
+```
+cd paymaster
+mv .env.example .env
+cd ../
+```
+
+### Generate DJANGO secret key
+```
+python3 -c 'import random; result = "".join([random.choice("abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)") for i in range(50)]); print(result)'
+```
+
 ### Create a virtual environment
 ```
 python3 -m venv .venv
@@ -35,6 +47,7 @@ source .venv/bin/activate
 
 ### Install required libs
 ```
+pip install wheel
 pip install -r requirements.txt
 ```
 
