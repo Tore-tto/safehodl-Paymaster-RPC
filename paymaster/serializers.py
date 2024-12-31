@@ -155,7 +155,7 @@ class OperationSerialzer(serializers.Serializer):
     maxFeePerGas = HexadecimalField()
     maxPriorityFeePerGas = HexadecimalField()
     paymasterAndData = HexadecimalField2(allow_blank=True)
-    signature = HexadecimalField2(max_length=65, min_length=65, allow_blank=True)
+    signature = HexadecimalField2(max_length=898, min_length=65, allow_blank=True)
 
     def create(self, validated_data):
         return Operation.objects.create(**validated_data)
