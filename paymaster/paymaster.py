@@ -2,7 +2,6 @@ import math
 
 from .models import ERC20ApprovedToken
 from .serializers import OperationSerialzer
-
 from jsonrpcserver import method, Result, Success, dispatch, Error
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse
@@ -48,525 +47,34 @@ def pm_sponsorUserOperation(request, token_address) -> Result:
     op["verificationGasLimit"] = int(op["verificationGasLimit"], 16)
     op["preVerificationGas"] = int(op["preVerificationGas"], 16)
     op["nonce"] = int(op["nonce"], 16)
+    
+    additional_gas = 35000
+    exchange_rate = _get_token_rate(token)
+    print('\033[96m' + "Exchange rate received." + '\033[39m')
 
-    abi = [
-    {
-      "inputs": [
-        {
-          "internalType": "contract IEntryPoint",
-          "name": "_entryPoint",
-          "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "_owner",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "constructor"
-    },
-    {
-      "anonymous": False,
-      "inputs": [
-        {
-          "indexed": True,
-          "internalType": "address",
-          "name": "previousOwner",
-          "type": "address"
-        },
-        {
-          "indexed": True,
-          "internalType": "address",
-          "name": "newOwner",
-          "type": "address"
-        }
-      ],
-      "name": "OwnershipTransferred",
-      "type": "event"
-    },
-    {
-      "anonymous": False,
-      "inputs": [
-        {
-          "indexed": True,
-          "internalType": "address",
-          "name": "sender",
-          "type": "address"
-        },
-        {
-          "indexed": True,
-          "internalType": "address",
-          "name": "token",
-          "type": "address"
-        },
-        {
-          "indexed": False,
-          "internalType": "uint256",
-          "name": "cost",
-          "type": "uint256"
-        }
-      ],
-      "name": "UserOperationSponsored",
-      "type": "event"
-    },
-    {
-      "inputs": [],
-      "name": "COST_OF_POST",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint32",
-          "name": "unstakeDelaySec",
-          "type": "uint32"
-        }
-      ],
-      "name": "addStake",
-      "outputs": [],
-      "stateMutability": "payable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "contract IERC20Metadata",
-          "name": "token",
-          "type": "address"
-        }
-      ],
-      "name": "balanceOfToken",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "deposit",
-      "outputs": [],
-      "stateMutability": "payable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "entryPoint",
-      "outputs": [
-        {
-          "internalType": "contract IEntryPoint",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "getDeposit",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "components": [
-            {
-              "internalType": "address",
-              "name": "sender",
-              "type": "address"
-            },
-            {
-              "internalType": "uint256",
-              "name": "nonce",
-              "type": "uint256"
-            },
-            {
-              "internalType": "bytes",
-              "name": "initCode",
-              "type": "bytes"
-            },
-            {
-              "internalType": "bytes",
-              "name": "callData",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "callGasLimit",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "verificationGasLimit",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "preVerificationGas",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "maxFeePerGas",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "maxPriorityFeePerGas",
-              "type": "uint256"
-            },
-            {
-              "internalType": "bytes",
-              "name": "paymasterAndData",
-              "type": "bytes"
-            },
-            {
-              "internalType": "bytes",
-              "name": "signature",
-              "type": "bytes"
-            }
-          ],
-          "internalType": "struct UserOperation",
-          "name": "userOp",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "contract IERC20Metadata",
-              "name": "token",
-              "type": "address"
-            },
-            {
-              "internalType": "enum LouicePaymaster.SponsoringMode",
-              "name": "mode",
-              "type": "uint8"
-            },
-            {
-              "internalType": "uint48",
-              "name": "validUntil",
-              "type": "uint48"
-            },
-            {
-              "internalType": "uint256",
-              "name": "fee",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "exchangeRate",
-              "type": "uint256"
-            },
-            {
-              "internalType": "bytes",
-              "name": "signature",
-              "type": "bytes"
-            }
-          ],
-          "internalType": "struct LouicePaymaster.PaymasterData",
-          "name": "paymasterData",
-          "type": "tuple"
-        }
-      ],
-      "name": "getHash",
-      "outputs": [
-        {
-          "internalType": "bytes32",
-          "name": "",
-          "type": "bytes32"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "owner",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "bytes",
-          "name": "paymasterAndData",
-          "type": "bytes"
-        }
-      ],
-      "name": "parsePaymasterAndData",
-      "outputs": [
-        {
-          "components": [
-            {
-              "internalType": "contract IERC20Metadata",
-              "name": "token",
-              "type": "address"
-            },
-            {
-              "internalType": "enum LouicePaymaster.SponsoringMode",
-              "name": "mode",
-              "type": "uint8"
-            },
-            {
-              "internalType": "uint48",
-              "name": "validUntil",
-              "type": "uint48"
-            },
-            {
-              "internalType": "uint256",
-              "name": "fee",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "exchangeRate",
-              "type": "uint256"
-            },
-            {
-              "internalType": "bytes",
-              "name": "signature",
-              "type": "bytes"
-            }
-          ],
-          "internalType": "struct LouicePaymaster.PaymasterData",
-          "name": "",
-          "type": "tuple"
-        }
-      ],
-      "stateMutability": "pure",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "enum IPaymaster.PostOpMode",
-          "name": "mode",
-          "type": "uint8"
-        },
-        {
-          "internalType": "bytes",
-          "name": "context",
-          "type": "bytes"
-        },
-        {
-          "internalType": "uint256",
-          "name": "actualGasCost",
-          "type": "uint256"
-        }
-      ],
-      "name": "postOp",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "renounceOwnership",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "newOwner",
-          "type": "address"
-        }
-      ],
-      "name": "transferOwnership",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "unlockStake",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "components": [
-            {
-              "internalType": "address",
-              "name": "sender",
-              "type": "address"
-            },
-            {
-              "internalType": "uint256",
-              "name": "nonce",
-              "type": "uint256"
-            },
-            {
-              "internalType": "bytes",
-              "name": "initCode",
-              "type": "bytes"
-            },
-            {
-              "internalType": "bytes",
-              "name": "callData",
-              "type": "bytes"
-            },
-            {
-              "internalType": "uint256",
-              "name": "callGasLimit",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "verificationGasLimit",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "preVerificationGas",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "maxFeePerGas",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "maxPriorityFeePerGas",
-              "type": "uint256"
-            },
-            {
-              "internalType": "bytes",
-              "name": "paymasterAndData",
-              "type": "bytes"
-            },
-            {
-              "internalType": "bytes",
-              "name": "signature",
-              "type": "bytes"
-            }
-          ],
-          "internalType": "struct UserOperation",
-          "name": "userOp",
-          "type": "tuple"
-        },
-        {
-          "internalType": "bytes32",
-          "name": "userOpHash",
-          "type": "bytes32"
-        },
-        {
-          "internalType": "uint256",
-          "name": "maxCost",
-          "type": "uint256"
-        }
-      ],
-      "name": "validatePaymasterUserOp",
-      "outputs": [
-        {
-          "internalType": "bytes",
-          "name": "context",
-          "type": "bytes"
-        },
-        {
-          "internalType": "uint256",
-          "name": "validationData",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address payable",
-          "name": "withdrawAddress",
-          "type": "address"
-        }
-      ],
-      "name": "withdrawStake",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address payable",
-          "name": "withdrawAddress",
-          "type": "address"
-        },
-        {
-          "internalType": "uint256",
-          "name": "amount",
-          "type": "uint256"
-        }
-      ],
-      "name": "withdrawTo",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "contract IERC20Metadata",
-          "name": "token",
-          "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "target",
-          "type": "address"
-        },
-        {
-          "internalType": "uint256",
-          "name": "amount",
-          "type": "uint256"
-        }
-      ],
-      "name": "withdrawTokensTo",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    }
-  ]
+    total_gas = op["preVerificationGas"] + op["verificationGasLimit"] + op["callGasLimit"]
+    actual_token_cost = ((total_gas * op["maxFeePerGas"] + (additional_gas * op["maxFeePerGas"])) * exchange_rate) // 10**18
+    print ("actual token cost : ",actual_token_cost)
+    
+    ERC20_ABI = [{"inputs": [{"name": "_owner","type": "address"}],"name": "balanceOf","outputs": [{"name": "balance","type": "uint256"}],"stateMutability": "view","type": "function"},]
+  
+    # Retrieve wallet address from the operation
+    wallet_address = op["sender"]
+    print("sender : ",op["sender"])
+    # Check the wallet balance for the required token
+    erc20_contract = w3.eth.contract(address=token_address, abi=ERC20_ABI)
+    wallet_balance = erc20_contract.functions.balanceOf(wallet_address).call()
+    if wallet_balance < actual_token_cost:
+        error_message = (
+            f"Insufficient token"
+        )
+        print('\033[91m' + error_message + '\033[39m')  # Prints the error in red for visibility
+        return Error(3, error_message, data="")
+    
+    abi = [{"inputs":[{"components":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"nonce","type":"uint256"},{"internalType":"bytes","name":"initCode","type":"bytes"},{"internalType":"bytes","name":"callData","type":"bytes"},{"internalType":"uint256","name":"callGasLimit","type":"uint256"},{"internalType":"uint256","name":"verificationGasLimit","type":"uint256"},{"internalType":"uint256","name":"preVerificationGas","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"uint256","name":"maxPriorityFeePerGas","type":"uint256"},{"internalType":"bytes","name":"paymasterAndData","type":"bytes"},{"internalType":"bytes","name":"signature","type":"bytes"}],"internalType":"struct UserOperation","name":"userOp","type":"tuple"},{"components":[{"internalType":"contract IERC20Metadata","name":"token","type":"address"},{"internalType":"enum CandidePaymaster.SponsoringMode","name":"mode","type":"uint8"},{"internalType":"uint48","name":"validUntil","type":"uint48"},{"internalType":"uint256","name":"fee","type":"uint256"},{"internalType":"uint256","name":"exchangeRate","type":"uint256"},{"internalType":"bytes","name":"signature","type":"bytes"}],"internalType":"struct CandidePaymaster.PaymasterData","name":"paymasterData","type":"tuple"}],"name":"getHash","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]
 
     paymaster = w3.eth.contract(address=env('paymaster_add'), abi=abi)
 
-    exchange_rate = _get_token_rate(token)
-
-    print('\033[96m' + "Exchange rate received." + '\033[39m')
     print(w3.eth.get_block("latest").timestamp)
     print((w3.eth.get_block("latest").number))
 
@@ -578,13 +86,18 @@ def pm_sponsorUserOperation(request, token_address) -> Result:
         exchange_rate,  # Exchange Rate
         b'',
     ]
+  
+    print(type(op))         # Should be tuple
+    print(type(paymasterData))  # Should be tuple
     print('\033[96m' + "PaymasterData calculated" + '\033[39m')
     hash = paymaster.functions.getHash(op, paymasterData).call()
     hash = defunct_hash_message(hash)
     paymasterSigner = w3.eth.account.from_key(env('paymaster_pk'))
     sig = paymasterSigner.signHash(hash)
+    print('sign',sig)
+    print('sig',sig.signature.hex())
     paymasterData[-1] = HexBytes(sig.signature.hex())
-
+    print('paymasterData last fiels', paymasterData[-1])
     print('\033[96m' + "Paymaster signature signed." + '\033[39m')
     paymasterAndData = (
           str(paymasterData[0][2:])
@@ -624,6 +137,7 @@ def pm_supportedEntryPoints() -> Result:
 
 def _get_token_rate(token):
     rate_request = requests.get(token["exchangeRateSource"])
+    print("rate_request: ",float(re.search(r'"eth":([\d.eE-]+)', rate_request.content.decode()).group(1)))
     rate_float = 1 / float(re.search(r'"eth":([\d.eE-]+)', rate_request.content.decode()).group(1))
     rate = math.ceil(rate_float * (10 ** token["decimals"]))
     return rate
