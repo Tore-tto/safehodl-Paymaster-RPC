@@ -16,20 +16,39 @@ from eth_account.messages import encode_defunct
 
 env = environ.Env()
 
-
+SUPPORTED_CHAINS = {"11155111": {'address': env('SEPOLIA_PM'), 'provider': env('SEPOLIA_PROVIDER')},
+                    "80002": {'address': env('AMOY_PM'), 'provider': env('AMOY_PROVIDER')}}
 # Todo: check wallet balance if it has the required tokens to pay for the paymaster fees
 # Todo: accept the full bundle as an input and check the approve operation
 @method
-def pm_sponsorUserOperation(request, token_address) -> Result:
-    w3 = Web3(Web3.HTTPProvider(env('HTTPProvider')))
+def pm_sponsorUserOperation(request, token_address, chainId) -> Result:
+    abi = [{"inputs":[{"components":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"nonce","type":"uint256"},{"internalType":"bytes","name":"initCode","type":"bytes"},{"internalType":"bytes","name":"callData","type":"bytes"},{"internalType":"uint256","name":"callGasLimit","type":"uint256"},{"internalType":"uint256","name":"verificationGasLimit","type":"uint256"},{"internalType":"uint256","name":"preVerificationGas","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"uint256","name":"maxPriorityFeePerGas","type":"uint256"},{"internalType":"bytes","name":"paymasterAndData","type":"bytes"},{"internalType":"bytes","name":"signature","type":"bytes"}],"internalType":"struct UserOperation","name":"userOp","type":"tuple"},{"components":[{"internalType":"contract IERC20Metadata","name":"token","type":"address"},{"internalType":"enum SafeHodlPaymaster.SponsoringMode","name":"mode","type":"uint8"},{"internalType":"uint48","name":"validUntil","type":"uint48"},{"internalType":"uint256","name":"fee","type":"uint256"},{"internalType":"uint256","name":"exchangeRate","type":"uint256"},{"internalType":"bytes","name":"signature","type":"bytes"}],"internalType":"struct SafeHodlPaymaster.PaymasterData","name":"paymasterData","type":"tuple"}],"name":"getHash","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]
+    ERC20_ABI = [{"inputs": [{"name": "_owner","type": "address"}],"name": "balanceOf","outputs": [{"name": "balance","type": "uint256"}],"stateMutability": "view","type": "function"},]
+
+    if chainId not in SUPPORTED_CHAINS:
+        return Error(2, "Unsupported ChainID", data=f"Supported chains are: {', '.join(SUPPORTED_CHAINS)}")
+
+    http_provider = SUPPORTED_CHAINS[chainId].get('provider')
+    if not http_provider:
+        return Error(2, "HTTP Provider not configured for the ChainID", data="")
     
-    chainId = str(env('chainId'))
-    if chainId == "80002":
-        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    w3 = Web3(Web3.HTTPProvider(http_provider))
+
+    if chainId not in SUPPORTED_CHAINS:
+        return Error(2, "Unsupported ChainID", data=f"Supported chains are: {', '.join(SUPPORTED_CHAINS)}")    
     
+    paymaster_address = SUPPORTED_CHAINS[chainId].get('address')
+
+    if not paymaster_address:
+        return Error(2, " paymaster address not configured for the ChainID", data="")
+
+    paymaster = w3.eth.contract(address=paymaster_address, abi=abi)
+    w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     # Verify connection
     if w3.is_connected():
         print('\033[96m' +"Connected to the network!" + '\033[39m')
+    else:
+        return Error(1, "connection Failed", data="")
     
     print('\033[96m' + "Paymaster Operation received." + '\033[39m')
     token_object = ERC20ApprovedToken.objects.filter(chains__has_key=chainId).filter(chains__icontains=token_address)
@@ -45,7 +64,7 @@ def pm_sponsorUserOperation(request, token_address) -> Result:
     if not serialzer.is_valid():
         return Error(400, "BAD REQUEST")
 
-    print('\033[96m' + "Serializs is done." + '\033[39m')
+    print('\033[96m' + "Serialize is done." + '\033[39m')
     op = (
         serialzer.data["sender"],
         int(serialzer.data["nonce"], 16),
@@ -78,7 +97,6 @@ def pm_sponsorUserOperation(request, token_address) -> Result:
     actual_token_cost = ((total_gas * maxFeePerGas + (additional_gas * maxFeePerGas)) * exchange_rate) // 10**18
     print("actual token cost : ", actual_token_cost)
     
-    ERC20_ABI = [{"inputs": [{"name": "_owner","type": "address"}],"name": "balanceOf","outputs": [{"name": "balance","type": "uint256"}],"stateMutability": "view","type": "function"},]
   
     # Check the wallet balance for the required token
     erc20_contract = w3.eth.contract(address=token_address, abi=ERC20_ABI)
@@ -87,8 +105,6 @@ def pm_sponsorUserOperation(request, token_address) -> Result:
         print('\033[91m' + "Insufficient token" + '\033[39m')
         return Error(3, "Insufficient token", data="")
 
-    abi = [{"inputs":[{"components":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"uint256","name":"nonce","type":"uint256"},{"internalType":"bytes","name":"initCode","type":"bytes"},{"internalType":"bytes","name":"callData","type":"bytes"},{"internalType":"uint256","name":"callGasLimit","type":"uint256"},{"internalType":"uint256","name":"verificationGasLimit","type":"uint256"},{"internalType":"uint256","name":"preVerificationGas","type":"uint256"},{"internalType":"uint256","name":"maxFeePerGas","type":"uint256"},{"internalType":"uint256","name":"maxPriorityFeePerGas","type":"uint256"},{"internalType":"bytes","name":"paymasterAndData","type":"bytes"},{"internalType":"bytes","name":"signature","type":"bytes"}],"internalType":"struct UserOperation","name":"userOp","type":"tuple"},{"components":[{"internalType":"contract IERC20Metadata","name":"token","type":"address"},{"internalType":"enum CandidePaymaster.SponsoringMode","name":"mode","type":"uint8"},{"internalType":"uint48","name":"validUntil","type":"uint48"},{"internalType":"uint256","name":"fee","type":"uint256"},{"internalType":"uint256","name":"exchangeRate","type":"uint256"},{"internalType":"bytes","name":"signature","type":"bytes"}],"internalType":"struct CandidePaymaster.PaymasterData","name":"paymasterData","type":"tuple"}],"name":"getHash","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"}]
-    paymaster = w3.eth.contract(address=env('paymaster_add'), abi=abi)
 
     paymasterData = [
         token["address"],
@@ -118,16 +134,24 @@ def pm_sponsorUserOperation(request, token_address) -> Result:
     return Success(paymasterAndData)
 
 @method
-def pm_getApprovedTokens() -> Result:
+def pm_getApprovedTokens(chainId) -> Result:
     result = []
-    approved_tokens = ERC20ApprovedToken.objects.filter(chains__has_key=env('chainId'))
+
+    if chainId not in SUPPORTED_CHAINS:
+        return Error(2, "Unsupported ChainID", data=f"Supported chains are: {', '.join(SUPPORTED_CHAINS)}")
+
+    approved_tokens = ERC20ApprovedToken.objects.filter(chains__has_key=chainId)
     print('approved_tokens',approved_tokens)
+    paymaster_address = SUPPORTED_CHAINS[chainId].get('address')
+    if not paymaster_address:
+        return Error(2, " paymaster address not configured for the ChainID", data="")
+
     for approvedToken in approved_tokens:
-        token = approvedToken.chains[env('chainId')]
+        token = approvedToken.chains[chainId]
         exchange_rate = _get_token_rate(token)
         result.append({
             "address": token["address"],
-            "paymaster": env('paymaster_add'),
+            "paymaster": paymaster_address,
             "exchangeRate": exchange_rate
         })
     return Success(result)
@@ -154,3 +178,16 @@ def jsonrpc(request):
     return HttpResponse(
         dispatch(request.body.decode()), content_type="application/json"
     )
+
+@method
+def get_supported_tokens():
+    tokens = ERC20ApprovedToken.objects.all()
+    supported_tokens = []
+
+    for token in tokens:
+        supported_tokens.append({
+            "name": token.name,
+            "chains": token.chains  # This should be a dict containing chain details
+        })
+
+    return Success(supported_tokens)
