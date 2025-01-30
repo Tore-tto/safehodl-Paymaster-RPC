@@ -7,11 +7,11 @@
 
 # About
 
-Candide Wallet is a smart contract wallet for Ethereum Mainnet and EVM compatible rollups.<br/>
+SafeHodl Wallet is a smart contract wallet for Ethereum Mainnet and EVM compatible rollups.<br/>
 This repo includes the paymaster RPC service.
 
 # Features
-- a paymaster RPC that approves and signs operation to allow for gas sponsoship and paying gas with ERC-20 tokens.
+- a paymaster RPC that approves and signs operation to allow for gas sponsorship and paying gas with ERC-20 tokens.
 - admin control panel to view processed operations
 
 # How to use this repo
@@ -52,8 +52,7 @@ python manage.py loaddata paymaster/tokenSeed.json
 ```
 
 ### Change .env variables if needed 
-the defaults work with the <a href='https://github.com/candidelabs/CandideWalletContracts'>CandideWalletContracts</a> repo for testing
-
+the defaults work with the <a href='https://github.com/victor-tucci/safehodl-contract'>SafeHodlContracts</a> repo for testing
 
 ### Create Super user for admin panel
 ```
@@ -67,7 +66,7 @@ python manage.py runserver
 
 ### Run the server with a custom os.environ
 ```
-python3 manage.py runserver --port 1337 --chainId 10 --HTTPProvider http://localhost:8545
+python3 manage.py runserver --port 1337
 ```
 
 ### Access the control panel
@@ -79,12 +78,6 @@ http://127.0.0.1:8000/admin/
 ```
 docker compose up -d
 ```
-
-## TODO
-- [ ] Gas limit calculation and verification (paymaster)
-- [ ] Fetching live token prices and verifying source wallets balance (paymaster)
-- [ ] Adding white list and black list for source wallets (paymaster)
-
 
 <!-- LICENSE -->
 ## License
